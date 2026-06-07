@@ -225,12 +225,35 @@
             New RO
           </button>
         </div>
-        <div class="kanban-board">
+        <!-- Kanban Controls Bar -->
+        <div class="kanban-controls">
+          <div class="kanban-date-filters">
+            <button class="kfilter-btn active" data-kdate="all">All Time</button>
+            <button class="kfilter-btn" data-kdate="today">Today</button>
+            <button class="kfilter-btn" data-kdate="week">This Week</button>
+            <button class="kfilter-btn" data-kdate="month">This Month</button>
+          </div>
+          <div class="kanban-col-toggles">
+            <button class="kcol-toggle active" data-kcol="open">
+              <span class="kcol-toggle-dot" style="background:#3B82F6"></span>Open
+            </button>
+            <button class="kcol-toggle active" data-kcol="in-progress">
+              <span class="kcol-toggle-dot" style="background:#F59E0B"></span>In Progress
+            </button>
+            <button class="kcol-toggle active" data-kcol="completed">
+              <span class="kcol-toggle-dot" style="background:#22C55E"></span>Completed
+            </button>
+          </div>
+        </div>
+        <div class="kanban-board" id="kanban-board">
           <div class="kanban-col" id="k-open" data-status="open" ondragover="kanbanDragOver(event)" ondrop="kanbanDrop(event,'open')">
             <div class="kanban-col-header">
               <span class="kcol-dot" style="background:#3B82F6"></span>
               <span class="kcol-title">Open</span>
               <span class="kcol-count" id="kc-open">0</span>
+              <button class="kcol-add-btn" onclick="openROModal()" title="Add order">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="13" height="13"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              </button>
             </div>
             <div class="kanban-cards" id="kcards-open"></div>
           </div>
@@ -239,6 +262,9 @@
               <span class="kcol-dot" style="background:#F59E0B"></span>
               <span class="kcol-title">In Progress</span>
               <span class="kcol-count" id="kc-in-progress">0</span>
+              <button class="kcol-add-btn" onclick="openROModal()" title="Add order">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="13" height="13"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              </button>
             </div>
             <div class="kanban-cards" id="kcards-in-progress"></div>
           </div>
@@ -391,22 +417,30 @@
     </div>
     <form id="vehicle-form" class="modal-body">
       <input type="hidden" id="vf-id">
-      <input type="hidden" id="vf-customer-id">
+      <div class="form-group">
+        <label>Owner <span style="color:var(--text-dim);font-weight:400;text-transform:none">(optional — can assign later)</span></label>
+        <select id="vf-customer-id">
+          <option value="">Unassigned / Walk-in</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin-bottom:6px">
+        <label>License Plate <span style="color:var(--red)">*</span></label>
+        <input type="text" id="vf-plate" placeholder="ABC-1234" style="text-transform:uppercase;font-size:1.1rem;font-weight:700;letter-spacing:.1em" required>
+      </div>
       <div class="form-row">
         <div class="form-group"><label>Year</label><input type="number" id="vf-year" placeholder="2020" min="1900" max="2030"></div>
         <div class="form-group"><label>Make</label><input type="text" id="vf-make" placeholder="Toyota"></div>
         <div class="form-group"><label>Model</label><input type="text" id="vf-model" placeholder="Camry"></div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label>License Plate</label><input type="text" id="vf-plate" placeholder="ABC-1234" style="text-transform:uppercase"></div>
         <div class="form-group"><label>Color</label><input type="text" id="vf-color" placeholder="Silver"></div>
-      </div>
-      <div class="form-group"><label>VIN</label><input type="text" id="vf-vin" placeholder="1HGBH41JXMN109186" maxlength="17"></div>
-      <div class="form-row">
         <div class="form-group"><label>Mileage</label><input type="number" id="vf-mileage" placeholder="45000"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>VIN</label><input type="text" id="vf-vin" placeholder="1HGBH41JXMN109186" maxlength="17"></div>
         <div class="form-group"><label>Next Service At (mi)</label><input type="number" id="vf-next-service" placeholder="50000"></div>
       </div>
-      <div class="form-group"><label>Service Notes</label><textarea id="vf-service-notes" placeholder="Known issues, preferences…" rows="2"></textarea></div>
+      <div class="form-group"><label>Service Notes</label><textarea id="vf-service-notes" placeholder="Known issues, customer preferences…" rows="2"></textarea></div>
       <div class="modal-footer">
         <button type="button" class="btn-ghost modal-close" data-modal="vehicle-modal">Cancel</button>
         <button type="submit" class="btn-primary">Save Vehicle</button>
@@ -426,12 +460,37 @@
       <input type="hidden" id="rof-id">
       <div class="form-row">
         <div class="form-group">
-          <label>Customer</label>
-          <select id="rof-customer" required><option value="">Select customer…</option></select>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+            <label style="margin:0">Customer</label>
+            <button type="button" class="inline-add-btn" id="toggle-new-customer" onclick="toggleInlinePanel('panel-new-customer',this)">+ New Customer</button>
+          </div>
+          <select id="rof-customer"><option value="">Walk-in / No customer</option></select>
+          <div class="inline-create-panel" id="panel-new-customer">
+            <div class="inline-create-title">Quick Add Customer</div>
+            <div class="form-row">
+              <div class="form-group"><label>First Name</label><input type="text" id="qc-first" placeholder="John"></div>
+              <div class="form-group"><label>Last Name</label><input type="text" id="qc-last" placeholder="Smith"></div>
+            </div>
+            <div class="form-group"><label>Phone</label><input type="tel" id="qc-phone" placeholder="(555) 000-0000"></div>
+            <button type="button" class="btn-primary btn-sm" onclick="quickAddCustomer()">Save &amp; Select</button>
+          </div>
         </div>
         <div class="form-group">
-          <label>Vehicle</label>
-          <select id="rof-vehicle" required><option value="">Select vehicle…</option></select>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+            <label style="margin:0">Vehicle</label>
+            <button type="button" class="inline-add-btn" id="toggle-new-vehicle" onclick="toggleInlinePanel('panel-new-vehicle',this)">+ New Vehicle</button>
+          </div>
+          <select id="rof-vehicle"><option value="">No vehicle / Unknown</option></select>
+          <div class="inline-create-panel" id="panel-new-vehicle">
+            <div class="inline-create-title">Quick Add Vehicle</div>
+            <div class="form-group"><label>Plate <span style="color:var(--red)">*</span></label><input type="text" id="qv-plate" placeholder="ABC-1234" style="text-transform:uppercase;font-weight:700;letter-spacing:.08em"></div>
+            <div class="form-row">
+              <div class="form-group"><label>Year</label><input type="number" id="qv-year" placeholder="2020"></div>
+              <div class="form-group"><label>Make</label><input type="text" id="qv-make" placeholder="Toyota"></div>
+              <div class="form-group"><label>Model</label><input type="text" id="qv-model" placeholder="Camry"></div>
+            </div>
+            <button type="button" class="btn-primary btn-sm" onclick="quickAddVehicle()">Save &amp; Select</button>
+          </div>
         </div>
       </div>
       <div class="form-row">

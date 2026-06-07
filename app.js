@@ -511,15 +511,20 @@ function renderVehicles(filter = '') {
 
 document.getElementById('vehicle-search').addEventListener('input', e => renderVehicles(e.target.value));
 
-function openVehicleModal(customerId, vehicleId = null) {
+function openVehicleModal(customerId = null, vehicleId = null) {
   const v = vehicleId ? DB.vehicles().find(x => x.id === vehicleId) : null;
   document.getElementById('vehicle-modal-title').textContent = v ? 'Edit Vehicle' : 'Add Vehicle';
   document.getElementById('vf-id').value = v?.id || '';
-  document.getElementById('vf-customer-id').value = customerId;
+  // Populate customer select
+  const custSel = document.getElementById('vf-customer-id');
+  const customers = DB.customers();
+  custSel.innerHTML = '<option value="">Unassigned / Walk-in</option>' +
+    customers.map(c => `<option value="${c.id}">${c.first} ${c.last}${c.phone ? ' · ' + c.phone : ''}</option>`).join('');
+  custSel.value = v?.customerId || customerId || '';
+  document.getElementById('vf-plate').value = v?.plate || '';
   document.getElementById('vf-year').value = v?.year || '';
   document.getElementById('vf-make').value = v?.make || '';
   document.getElementById('vf-model').value = v?.model || '';
-  document.getElementById('vf-plate').value = v?.plate || '';
   document.getElementById('vf-color').value = v?.color || '';
   document.getElementById('vf-vin').value = v?.vin || '';
   document.getElementById('vf-mileage').value = v?.mileage || '';
@@ -562,6 +567,54 @@ document.getElementById('vehicle-form').addEventListener('submit', e => {
   renderVehicles(document.getElementById('vehicle-search').value);
   toast(idx >= 0 ? 'Vehicle updated' : 'Vehicle added');
 });
+
+/* ── Quick-Add helpers (inline RO modal panels) ── */
+function toggleInlinePanel(panelId, btnEl) {
+  const panel = document.getElementById(panelId);
+  const open = panel.classList.toggle('open');
+  btnEl.textContent = open ? '− Cancel' : (panelId.includes('customer') ? '+ New Customer' : '+ New Vehicle');
+}
+function quickAddCustomer() {
+  const first = document.getElementById('qc-first').value.trim();
+  const last = document.getElementById('qc-last').value.trim();
+  const phone = document.getElementById('qc-phone').value.trim();
+  if (!first && !last) { toast('Enter at least a first or last name', 'error'); return; }
+  const c = { id: uid(), first: first || 'Unknown', last: last || '', phone, email: '', notes: '', created: Date.now() };
+  const customers = DB.customers();
+  customers.push(c);
+  DB.save('customers', customers);
+  populateCustomerSelects();
+  document.getElementById('rof-customer').value = c.id;
+  updateVehicleSelect('rof-vehicle', c.id);
+  document.getElementById('qc-first').value = '';
+  document.getElementById('qc-last').value = '';
+  document.getElementById('qc-phone').value = '';
+  document.getElementById('panel-new-customer').classList.remove('open');
+  const btn = document.getElementById('toggle-new-customer');
+  if (btn) btn.textContent = '+ New Customer';
+  toast(`Customer ${c.first} ${c.last} added`);
+}
+function quickAddVehicle() {
+  const plate = document.getElementById('qv-plate').value.trim().toUpperCase();
+  const year = document.getElementById('qv-year').value.trim();
+  const make = document.getElementById('qv-make').value.trim();
+  const model = document.getElementById('qv-model').value.trim();
+  if (!plate && !make) { toast('Enter at least a plate or make', 'error'); return; }
+  const customerId = document.getElementById('rof-customer').value || null;
+  const v = { id: uid(), customerId, plate, year, make, model, color: '', vin: '', mileage: 0, nextService: 0, serviceNotes: '', created: Date.now() };
+  const vehicles = DB.vehicles();
+  vehicles.push(v);
+  DB.save('vehicles', vehicles);
+  updateVehicleSelect('rof-vehicle', customerId, v.id);
+  document.getElementById('qv-plate').value = '';
+  document.getElementById('qv-year').value = '';
+  document.getElementById('qv-make').value = '';
+  document.getElementById('qv-model').value = '';
+  document.getElementById('panel-new-vehicle').classList.remove('open');
+  const btn = document.getElementById('toggle-new-vehicle');
+  if (btn) btn.textContent = '+ New Vehicle';
+  toast(`Vehicle ${year} ${make} ${model || plate} added & selected`);
+}
 
 /* ── REPAIR ORDERS ── */
 let roFilter = 'all';
@@ -619,16 +672,17 @@ async function deleteOrder(id) {
 
 function populateCustomerSelects() {
   const customers = DB.customers();
-  const opts = '<option value="">Select customer…</option>' + customers.map(c => `<option value="${c.id}">${c.first} ${c.last}</option>`).join('');
+  const walkInOpts = '<option value="">Walk-in / No customer</option>' + customers.map(c => `<option value="${c.id}">${c.first} ${c.last}${c.phone ? ' · ' + c.phone : ''}</option>`).join('');
   ['rof-customer', 'dvif-customer', 'apptf-customer'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.innerHTML = el.id === 'apptf-customer' ? '<option value="">Walk-in / Unknown</option>' + customers.map(c => `<option value="${c.id}">${c.first} ${c.last}</option>`).join('') : opts;
+    if (el) el.innerHTML = walkInOpts;
   });
 }
 
 function updateVehicleSelect(selId, customerId, selectedVehicleId = null) {
   const sel = document.getElementById(selId);
-  const vehicles = DB.vehicles().filter(v => v.customerId === customerId);
+  const all = DB.vehicles();
+  const vehicles = customerId ? all.filter(v => v.customerId === customerId) : all;
   sel.innerHTML = '<option value="">Select vehicle…</option>' + vehicles.map(v => `<option value="${v.id}" ${v.id === selectedVehicleId ? 'selected' : ''}>${v.year} ${v.make} ${v.model}${v.plate ? ' (' + v.plate + ')' : ''}</option>`).join('');
 }
 
@@ -717,18 +771,56 @@ document.getElementById('ro-form').addEventListener('submit', e => {
 
 /* ── KANBAN ── */
 let draggingId = null;
+let kanbanDateFilter = 'all';
+let kanbanHiddenCols = new Set();
+
+function kanbanDateStart(filter) {
+  const now = new Date();
+  if (filter === 'today') { const d = new Date(now.getFullYear(), now.getMonth(), now.getDate()); return d.getTime(); }
+  if (filter === 'week') { const d = new Date(now); d.setDate(now.getDate() - now.getDay()); d.setHours(0,0,0,0); return d.getTime(); }
+  if (filter === 'month') { return new Date(now.getFullYear(), now.getMonth(), 1).getTime(); }
+  return 0;
+}
 
 function renderKanban() {
-  const orders = DB.orders();
+  let orders = DB.orders();
+  const since = kanbanDateStart(kanbanDateFilter);
+  if (since) orders = orders.filter(o => (o.updated || o.created) >= since);
+
   ['open', 'in-progress', 'completed'].forEach(status => {
+    const colEl = document.getElementById('k-' + status);
+    if (!colEl) return;
+    if (kanbanHiddenCols.has(status)) { colEl.style.display = 'none'; return; }
+    colEl.style.display = '';
     const col = orders.filter(o => o.status === status);
     document.getElementById('kc-' + status).textContent = col.length;
     document.getElementById('kcards-' + status).innerHTML = col.length
       ? col.sort((a, b) => b.created - a.created).map(o => kanbanCard(o)).join('')
       : `<div style="color:var(--text-dim);font-size:.8rem;text-align:center;padding:20px 0">Drop orders here</div>`;
   });
-  document.getElementById('ro-badge').textContent = orders.filter(o => o.status !== 'completed').length;
+  document.getElementById('ro-badge').textContent = DB.orders().filter(o => o.status !== 'completed').length;
+
+  // Sync toggle button states
+  document.querySelectorAll('.kcol-toggle').forEach(btn => {
+    const col = btn.dataset.kcol;
+    btn.classList.toggle('active', !kanbanHiddenCols.has(col));
+  });
+  document.querySelectorAll('.kfilter-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.kdate === kanbanDateFilter);
+  });
 }
+
+// Kanban controls event delegation
+document.addEventListener('click', e => {
+  const fb = e.target.closest('.kfilter-btn');
+  if (fb) { kanbanDateFilter = fb.dataset.kdate; renderKanban(); return; }
+  const tb = e.target.closest('.kcol-toggle');
+  if (tb) {
+    const col = tb.dataset.kcol;
+    if (kanbanHiddenCols.has(col)) kanbanHiddenCols.delete(col); else kanbanHiddenCols.add(col);
+    renderKanban(); return;
+  }
+});
 
 function kanbanCard(o) {
   const c = DB.customers().find(x => x.id === o.customerId);
@@ -1195,11 +1287,9 @@ function searchPlate(plate) {
 }
 
 function prefillNewVehicle(plate) {
-  const customers = DB.customers();
-  if (!customers.length) { navigate('customers'); openCustomerModal(); toast('Add a customer first, then their vehicle', 'info'); return; }
   navigate('vehicles');
-  openVehicleModal(customers[0].id);
-  setTimeout(() => { document.getElementById('vf-plate').value = plate; }, 50);
+  openVehicleModal(null);
+  setTimeout(() => { document.getElementById('vf-plate').value = normPlate(plate); }, 50);
 }
 
 /* ── EXPORT / IMPORT ── */

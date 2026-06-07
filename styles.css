@@ -739,6 +739,53 @@ body::before {
   .scanner-layout { grid-template-columns: 1fr; }
   .kanban-board { grid-template-columns: 1fr; }
 }
+/* ── Inline Quick-Add Panels (RO modal) ─────────────────────────── */
+.inline-add-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: none; border: 1px dashed rgba(34,197,94,.4); color: #22C55E;
+  border-radius: 6px; padding: 3px 10px; font-size: 12px; cursor: pointer;
+  transition: all .2s;
+}
+.inline-add-btn:hover { background: rgba(34,197,94,.08); border-color: #22C55E; }
+.inline-create-panel {
+  display: none; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08);
+  border-radius: 10px; padding: 14px; margin-top: 8px; animation: fadeSlideDown .2s ease;
+}
+.inline-create-panel.open { display: block; }
+.inline-create-title { font-size: 12px; font-weight: 600; color: #22C55E; margin-bottom: 10px; text-transform: uppercase; letter-spacing: .05em; }
+.btn-sm { padding: 6px 14px !important; font-size: 13px !important; margin-top: 8px; }
+@keyframes fadeSlideDown { from { opacity:0; transform:translateY(-6px) } to { opacity:1; transform:translateY(0) } }
+
+/* ── Kanban Controls Bar ─────────────────────────────────────────── */
+.kanban-controls {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+  gap: 10px; margin-bottom: 16px;
+}
+.kanban-date-filters { display: flex; gap: 6px; flex-wrap: wrap; }
+.kfilter-btn {
+  background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1);
+  color: #94A3B8; border-radius: 20px; padding: 5px 14px; font-size: 13px; cursor: pointer;
+  transition: all .2s;
+}
+.kfilter-btn:hover { background: rgba(34,197,94,.1); color: #22C55E; border-color: rgba(34,197,94,.3); }
+.kfilter-btn.active { background: rgba(34,197,94,.15); color: #22C55E; border-color: rgba(34,197,94,.5); font-weight: 600; }
+.kanban-col-toggles { display: flex; gap: 6px; flex-wrap: wrap; }
+.kcol-toggle {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1);
+  color: #94A3B8; border-radius: 20px; padding: 5px 12px; font-size: 12px; cursor: pointer;
+  transition: all .2s;
+}
+.kcol-toggle.active { background: rgba(255,255,255,.08); color: #E2E8F0; border-color: rgba(255,255,255,.2); }
+.kcol-toggle:not(.active) { opacity: .5; }
+.kcol-toggle-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.kcol-add-btn {
+  background: none; border: none; color: rgba(255,255,255,.4); width: 22px; height: 22px;
+  border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-size: 16px; cursor: pointer; transition: all .2s; line-height: 1;
+}
+.kcol-add-btn:hover { background: rgba(34,197,94,.2); color: #22C55E; }
+
 @media (max-width: 768px) {
   #sidebar { transform: translateX(-100%); }
   #sidebar.open { transform: translateX(0); }
