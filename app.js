@@ -656,6 +656,68 @@ function quickAddVehicle() {
 let roFilter = 'all';
 let roSearch = '';
 let lineItems = [];
+let roPhotos = []; // base64 strings for current RO being edited
+
+/* ── Photo helpers ── */
+function compressImage(file) {
+  return new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 1200;
+        let { width, height } = img;
+        if (width > MAX || height > MAX) {
+          if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
+          else { width = Math.round(width * MAX / height); height = MAX; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.72));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handlePhotoUpload(files) {
+  if (!files || !files.length) return;
+  toast('Processing photos…', 'info');
+  for (const file of Array.from(files)) {
+    if (!file.type.startsWith('image/')) continue;
+    const b64 = await compressImage(file);
+    roPhotos.push(b64);
+  }
+  document.getElementById('rof-photos').value = '';
+  renderPhotoThumbs();
+  toast(`${files.length} photo${files.length > 1 ? 's' : ''} added`);
+}
+
+function renderPhotoThumbs() {
+  const container = document.getElementById('photo-thumbs');
+  if (!container) return;
+  if (!roPhotos.length) { container.innerHTML = ''; return; }
+  container.innerHTML = roPhotos.map((src, i) => `
+    <div class="photo-thumb-wrap">
+      <img src="${src}" class="photo-thumb" onclick="viewPhoto(${i})" alt="Photo ${i + 1}">
+      <button type="button" class="photo-thumb-del" onclick="removePhoto(${i})" title="Remove">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="10" height="10"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>`).join('');
+}
+
+function removePhoto(idx) {
+  roPhotos.splice(idx, 1);
+  renderPhotoThumbs();
+}
+
+function viewPhoto(idx) {
+  const w = window.open('', '_blank');
+  w.document.write(`<html><body style="margin:0;background:#000;display:flex;align-items:center;justify-content:center;min-height:100vh"><img src="${roPhotos[idx]}" style="max-width:100%;max-height:100vh;object-fit:contain"></body></html>`);
+  w.document.close();
+}
 
 function roDateStart(filter) {
   const now = new Date();
@@ -710,6 +772,7 @@ function renderOrders() {
       </div>
       ${o.priority !== 'normal' ? `<span class="badge badge-${o.priority}">${o.priority}</span>` : ''}
       <span class="badge badge-${o.status}">${o.status.replace('-', ' ')}</span>
+      ${o.photos?.length ? `<span class="badge" style="background:rgba(59,130,246,.15);color:#3B82F6"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="10" height="10" style="margin-right:3px"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>${o.photos.length}</span>` : ''}
       <div style="font-weight:700;color:var(--accent);white-space:nowrap">${fmt(o.total)}</div>
       <div class="data-card-actions">
         <button class="btn-danger" onclick="event.stopPropagation();deleteOrder('${o.id}')">Delete</button>
@@ -758,6 +821,7 @@ function openROModal(id = null, preCustomerId = null) {
   document.getElementById('ro-modal-title').textContent = o ? 'Edit Repair Order' : 'New Repair Order';
   document.getElementById('rof-id').value = o?.id || '';
   lineItems = o?.lines ? JSON.parse(JSON.stringify(o.lines)) : [];
+  roPhotos = o?.photos ? [...o.photos] : [];
   populateCustomerSelects();
   const cid = o?.customerId || preCustomerId || '';
   document.getElementById('rof-customer').value = cid;
@@ -766,7 +830,18 @@ function openROModal(id = null, preCustomerId = null) {
   document.getElementById('rof-priority').value = o?.priority || 'normal';
   document.getElementById('rof-desc').value = o?.desc || '';
   document.getElementById('rof-notes').value = o?.notes || '';
-  renderLineItems(); openModal('ro-modal');
+  // reset inline panels
+  ['panel-new-customer','panel-new-vehicle'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove('open');
+  });
+  const tnc = document.getElementById('toggle-new-customer');
+  if (tnc) tnc.textContent = '+ New Customer';
+  const tnv = document.getElementById('toggle-new-vehicle');
+  if (tnv) tnv.textContent = '+ New Vehicle';
+  renderLineItems();
+  renderPhotoThumbs();
+  openModal('ro-modal');
 }
 
 document.getElementById('rof-customer').addEventListener('change', e => updateVehicleSelect('rof-vehicle', e.target.value));
@@ -825,6 +900,7 @@ document.getElementById('ro-form').addEventListener('submit', e => {
     desc: document.getElementById('rof-desc').value.trim(),
     notes: document.getElementById('rof-notes').value.trim(),
     lines: JSON.parse(JSON.stringify(lineItems)),
+    photos: [...roPhotos],
     subtotal, tax: subtotal * tax, total: subtotal * (1 + tax),
     created: idx >= 0 ? orders[idx].created : Date.now(),
     updated: Date.now(),
@@ -937,28 +1013,72 @@ function kanbanDrop(e, newStatus) {
 }
 
 /* ── Google Review ── */
-let _reviewCustId = null;
+let _reviewCustomerId = null;
+let _reviewMailto = '';
+
 function triggerReviewPrompt(customerId) {
   const s = getSettings();
   const url = s.reviewUrl || '';
+  const shopName = s.name || 'our shop';
   const c = DB.customers().find(x => x.id === customerId);
-  _reviewCustId = customerId;
-  document.getElementById('review-customer-name').textContent = c ? c.first + ' ' + c.last : 'the customer';
-  const box = document.getElementById('review-link-box');
-  if (url) { box.textContent = url; box.style.display = ''; }
-  else { box.style.display = 'none'; }
+  _reviewCustomerId = customerId;
+
+  const name = c ? c.first + ' ' + c.last : 'Valued Customer';
+  const email = c?.email || '';
+
+  // Avatar
+  const av = document.getElementById('review-customer-avatar');
+  const color = avatarColor(c?.first || 'U');
+  av.style.background = color + '22';
+  av.style.color = color;
+  av.textContent = ((c?.first || 'U')[0] + (c?.last || '')[0]).toUpperCase();
+
+  document.getElementById('review-customer-name').textContent = name;
+  document.getElementById('review-customer-email').textContent = email || 'No email on file';
+
+  // Build email content
+  const subject = `Thank you for choosing ${shopName}!`;
+  const firstName = c?.first || 'there';
+  const body = [
+    `Hi ${firstName},`,
+    '',
+    `Thank you for trusting ${shopName} with your vehicle. We truly appreciate your business and hope everything is running smoothly.`,
+    '',
+    `If you have a moment, we'd love it if you could leave us a quick Google review — it helps our small business more than you know:`,
+    '',
+    url || '[Add your Google Review link in Settings]',
+    '',
+    `It only takes a minute and means the world to us. Thank you!`,
+    '',
+    `— The ${shopName} Team`,
+  ].join('\n');
+
+  document.getElementById('review-to').textContent = email || '—';
+  document.getElementById('review-subject').textContent = subject;
+  document.getElementById('review-body-preview').textContent = body;
+
+  // mailto link
+  _reviewMailto = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+  // Show/hide warnings
+  document.getElementById('review-no-email-warn').style.display = email ? 'none' : '';
+  document.getElementById('review-no-url-warn').style.display = url ? 'none' : '';
+  document.getElementById('review-email-preview').style.display = email ? '' : 'none';
+  document.getElementById('review-email-btn').disabled = !email;
+
   openModal('review-modal');
 }
+
+function sendReviewEmail() {
+  if (!_reviewMailto) return;
+  window.location.href = _reviewMailto;
+  setTimeout(() => closeModal('review-modal'), 800);
+}
+
 function copyReviewLink() {
   const url = getSettings().reviewUrl || '';
   if (!url) { toast('No review link configured — add it in Settings', 'error'); return; }
-  navigator.clipboard.writeText(url).then(() => toast('Review link copied to clipboard'));
-}
-function openReviewLink() {
-  const url = getSettings().reviewUrl || '';
-  if (!url) { toast('No review link configured — add it in Settings', 'error'); return; }
-  window.open(url, '_blank');
-  closeModal('review-modal');
+  navigator.clipboard.writeText(url).then(() => toast('Review link copied'));
 }
 document.addEventListener('dragover', e => {
   document.querySelectorAll('.kanban-col').forEach(c => { if (!c.contains(e.target)) c.classList.remove('drag-over'); });

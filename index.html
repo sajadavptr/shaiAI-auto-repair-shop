@@ -544,6 +544,17 @@
         </div>
       </div>
       <div class="form-group"><label>Technician Notes</label><textarea id="rof-notes" placeholder="Internal notes…" rows="2"></textarea></div>
+      <div class="form-group">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <label style="margin:0">Photos</label>
+          <button type="button" class="inline-add-btn" onclick="document.getElementById('rof-photos').click()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            Add Photo
+          </button>
+        </div>
+        <input type="file" id="rof-photos" accept="image/*" multiple style="display:none" onchange="handlePhotoUpload(this.files)">
+        <div class="photo-thumbs" id="photo-thumbs"></div>
+      </div>
       <div class="modal-footer">
         <button type="button" class="btn-ghost modal-close" data-modal="ro-modal">Cancel</button>
         <button type="submit" class="btn-primary">Save Repair Order</button>
@@ -654,17 +665,40 @@
 
 <!-- Google Review Modal -->
 <div class="modal-backdrop" id="review-modal">
-  <div class="modal glass-card" style="max-width:420px;text-align:center">
-    <div class="modal-header" style="justify-content:center;border:none;padding-bottom:0">
-      <h2 style="font-size:1.1rem">Job Complete! 🎉</h2>
+  <div class="modal glass-card" style="max-width:460px">
+    <div class="modal-header">
+      <h2 style="font-size:1.05rem">Job Complete — Request a Review</h2>
+      <button class="icon-btn modal-close" data-modal="review-modal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
     </div>
     <div class="modal-body" style="padding-top:12px">
-      <p style="color:var(--text-muted);font-size:.9rem;margin-bottom:16px">Would you like to send <strong id="review-customer-name">the customer</strong> a Google review request?</p>
-      <div id="review-link-box" style="background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.25);border-radius:10px;padding:12px;margin-bottom:16px;word-break:break-all;font-size:.78rem;color:var(--accent);display:none"></div>
-      <div style="font-size:.78rem;color:var(--text-dim);margin-bottom:16px">Configure your Google Review link in <strong>Settings → Review Link</strong>.</div>
-      <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
-        <button class="btn-primary" onclick="copyReviewLink()">Copy Link</button>
-        <button class="btn-ghost" onclick="openReviewLink()">Open Link</button>
+      <div id="review-customer-block" style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+        <div id="review-customer-avatar" style="width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1rem;flex-shrink:0"></div>
+        <div>
+          <div id="review-customer-name" style="font-weight:700;font-size:.95rem"></div>
+          <div id="review-customer-email" style="font-size:.78rem;color:var(--text-muted)"></div>
+        </div>
+      </div>
+      <div id="review-email-preview" class="review-email-box">
+        <div class="review-email-meta">
+          <span style="color:var(--text-dim)">To:</span> <strong id="review-to"></strong>
+        </div>
+        <div class="review-email-meta">
+          <span style="color:var(--text-dim)">Subject:</span> <strong id="review-subject"></strong>
+        </div>
+        <div id="review-body-preview" class="review-body-text"></div>
+      </div>
+      <div id="review-no-email-warn" style="display:none;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:10px 14px;font-size:.8rem;color:var(--amber);margin-bottom:12px">
+        No email on file for this customer. Add one in their profile to send via email.
+      </div>
+      <div id="review-no-url-warn" style="display:none;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:10px 14px;font-size:.8rem;color:var(--red);margin-bottom:12px">
+        No Google Review link configured. Add it in <strong>Settings → Customer Reviews</strong>.
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
+        <button class="btn-primary" id="review-email-btn" onclick="sendReviewEmail()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          Open Email App
+        </button>
+        <button class="btn-ghost" onclick="copyReviewLink()">Copy Link</button>
         <button class="btn-ghost modal-close" data-modal="review-modal">Skip</button>
       </div>
     </div>

@@ -754,6 +754,34 @@ body::before {
 .section-search-bar input::placeholder { color: var(--text-dim); }
 .section-search-bar svg { color: var(--text-dim); flex-shrink: 0; }
 
+/* ── Photo Thumbnails ────────────────────────────────────────────── */
+.photo-thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.photo-thumb-wrap { position: relative; }
+.photo-thumb {
+  width: 80px; height: 80px; object-fit: cover; border-radius: 8px;
+  border: 1px solid var(--border); cursor: pointer; transition: opacity .2s;
+}
+.photo-thumb:hover { opacity: .85; }
+.photo-thumb-del {
+  position: absolute; top: -5px; right: -5px;
+  background: var(--red); border: none; border-radius: 50%;
+  width: 18px; height: 18px; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: #fff; padding: 0;
+}
+.photo-thumb-del:hover { background: #dc2626; }
+
+/* ── Review Email Preview ─────────────────────────────────────────── */
+.review-email-box {
+  background: rgba(255,255,255,.03); border: 1px solid var(--border);
+  border-radius: 10px; padding: 14px; margin-bottom: 14px; font-size: .8rem;
+}
+.review-email-meta { margin-bottom: 6px; color: var(--text-muted); }
+.review-body-text {
+  margin-top: 10px; color: var(--text); white-space: pre-wrap;
+  font-size: .78rem; line-height: 1.6; max-height: 160px; overflow-y: auto;
+  border-top: 1px solid var(--border); padding-top: 10px;
+}
+
 /* ── Inline Quick-Add Panels (RO modal) ─────────────────────────── */
 .inline-add-btn {
   display: inline-flex; align-items: center; gap: 4px;
