@@ -547,12 +547,19 @@
       <div class="form-group">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
           <label style="margin:0">Photos</label>
-          <button type="button" class="inline-add-btn" onclick="document.getElementById('rof-photos').click()">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-            Add Photo
-          </button>
+          <div style="display:flex;gap:6px">
+            <button type="button" class="inline-add-btn" onclick="document.getElementById('rof-camera').click()" title="Take photo with camera">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+              Take Photo
+            </button>
+            <button type="button" class="inline-add-btn" onclick="document.getElementById('rof-photos').click()" title="Upload from device">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Upload
+            </button>
+          </div>
         </div>
         <input type="file" id="rof-photos" accept="image/*" multiple style="display:none" onchange="handlePhotoUpload(this.files)">
+        <input type="file" id="rof-camera" accept="image/*" capture="environment" style="display:none" onchange="handlePhotoUpload(this.files)">
         <div class="photo-thumbs" id="photo-thumbs"></div>
       </div>
       <div class="modal-footer">
