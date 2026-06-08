@@ -846,19 +846,76 @@ function openROModal(id = null, preCustomerId = null) {
 
 document.getElementById('rof-customer').addEventListener('change', e => updateVehicleSelect('rof-vehicle', e.target.value));
 
+/* ── Parts / Services Catalog ── */
+function getCatalog() { return DB.get('catalog'); }
+function saveToCatalog(desc, price) {
+  if (!desc) return;
+  const catalog = getCatalog();
+  const existing = catalog.find(c => c.name.toLowerCase() === desc.toLowerCase());
+  if (existing) { existing.price = price || existing.price; existing.uses = (existing.uses || 0) + 1; }
+  else catalog.push({ name: desc, price: price || 0, uses: 1 });
+  catalog.sort((a, b) => (b.uses || 0) - (a.uses || 0));
+  DB.set('catalog', catalog.slice(0, 300));
+}
+
 function renderLineItems() {
   const container = document.getElementById('line-items');
   container.innerHTML = lineItems.map((li, i) => {
     const lineTotal = (li.qty || 1) * (li.price || 0);
     return `<div class="line-item">
-      <input type="text" placeholder="Service or part" value="${escHtml(li.desc || '')}" oninput="lineItems[${i}].desc=this.value">
+      <div class="li-desc-wrap">
+        <input type="text" class="li-desc-input" placeholder="Service or part" value="${escHtml(li.desc || '')}"
+          oninput="lineItems[${i}].desc=this.value;showCatalogDropdown(this,${i})"
+          onfocus="showCatalogDropdown(this,${i})"
+          onblur="hideCatalogDropdown(${i})"
+          autocomplete="off">
+        <div class="catalog-dropdown" id="cat-dd-${i}"></div>
+      </div>
       <input type="number" placeholder="1" value="${li.qty || 1}" min="1" oninput="lineItems[${i}].qty=+this.value||1;updateLineTotal(${i})" style="text-align:center">
-      <input type="number" placeholder="0.00" value="${li.price || ''}" step="0.01" min="0" oninput="lineItems[${i}].price=+this.value||0;updateLineTotal(${i})">
+      <input type="number" placeholder="0.00" value="${li.price || ''}" step="0.01" min="0" id="li-price-${i}" oninput="lineItems[${i}].price=+this.value||0;updateLineTotal(${i})">
       <span class="line-item-total" id="lt-${i}">${fmt(lineTotal)}</span>
       <button type="button" class="line-item-del" onclick="removeLine(${i})">×</button>
     </div>`;
   }).join('');
   calcTotal();
+}
+
+function showCatalogDropdown(input, idx) {
+  const q = (input.value || '').trim().toLowerCase();
+  const dd = document.getElementById('cat-dd-' + idx);
+  if (!dd) return;
+  const catalog = getCatalog();
+  const matches = q.length === 0
+    ? catalog.slice(0, 10)
+    : catalog.filter(c => c.name.toLowerCase().includes(q)).slice(0, 10);
+  if (!matches.length) { dd.innerHTML = ''; dd.classList.remove('open'); return; }
+  dd.innerHTML = matches.map(c => `
+    <div class="catalog-option" onmousedown="selectCatalogItem(event,${idx},'${c.name.replace(/'/g,"\\'")}',${c.price || 0})">
+      <span class="catalog-option-name">${c.name}</span>
+      ${c.price ? `<span class="catalog-option-price">${fmt(c.price)}</span>` : ''}
+    </div>`).join('');
+  dd.classList.add('open');
+}
+
+function hideCatalogDropdown(idx) {
+  setTimeout(() => {
+    const dd = document.getElementById('cat-dd-' + idx);
+    if (dd) dd.classList.remove('open');
+  }, 180);
+}
+
+function selectCatalogItem(e, idx, name, price) {
+  e.preventDefault();
+  lineItems[idx].desc = name;
+  lineItems[idx].price = price;
+  renderLineItems();
+  calcTotal();
+  // focus the qty field of the selected row
+  const inputs = document.getElementById('line-items').querySelectorAll('.line-item');
+  if (inputs[idx]) {
+    const qtyInput = inputs[idx].querySelectorAll('input[type=number]')[0];
+    if (qtyInput) qtyInput.focus();
+  }
 }
 
 function updateLineTotal(i) {
@@ -907,6 +964,8 @@ document.getElementById('ro-form').addEventListener('submit', e => {
   };
   if (idx >= 0) orders[idx] = order; else orders.push(order);
   DB.save('orders', orders);
+  // persist line items to reusable catalog
+  order.lines.forEach(l => { if (l.desc) saveToCatalog(l.desc, l.price); });
   closeModal('ro-modal');
   renderOrders(); renderDashboard(); if (currentView === 'kanban') renderKanban();
   toast(idx >= 0 ? 'Order updated' : 'Repair order created');
@@ -1145,8 +1204,8 @@ function openDVIModal(preCustomerId = null) {
     document.getElementById('dvif-vehicle').innerHTML = '<option value="">Select…</option>';
   }
   Object.entries(DVI_ITEMS).forEach(([section, items]) => {
-    document.getElementById('dvi-' + section).innerHTML = items.map(item => `
-      <div class="dvi-item" id="dvi-item-${btoa(item).replace(/=/g,'')}">
+    document.getElementById('dvi-' + section).innerHTML = items.map((item, idx) => `
+      <div class="dvi-item" id="dvi-item-${section}-${idx}">
         <span class="dvi-item-label">${item}</span>
         <div class="dvi-status-btns">
           <button type="button" class="dvi-btn" data-val="ok" onclick="setDVI('${item}','ok',this)">OK</button>

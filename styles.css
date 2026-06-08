@@ -605,7 +605,7 @@ body::before {
   text-transform: uppercase; letter-spacing: 0.05em;
 }
 .line-items { display: flex; flex-direction: column; gap: 6px; }
-.line-item { display: grid; grid-template-columns: 1fr 68px 80px 72px 28px; gap: 6px; align-items: center; }
+.line-item { display: grid; grid-template-columns: 1fr 68px 80px 72px 28px; gap: 6px; align-items: start; }
 .line-item input {
   background: var(--bg3); border: 1px solid var(--border);
   border-radius: 6px; color: var(--text); font-family: inherit;
@@ -753,6 +753,25 @@ body::before {
 }
 .section-search-bar input::placeholder { color: var(--text-dim); }
 .section-search-bar svg { color: var(--text-dim); flex-shrink: 0; }
+
+/* ── Catalog Autocomplete Dropdown ──────────────────────────────── */
+.li-desc-wrap { position: relative; flex: 1; min-width: 0; }
+.li-desc-input { width: 100%; }
+.catalog-dropdown {
+  display: none; position: absolute; top: calc(100% + 3px); left: 0; right: 0;
+  background: var(--bg2); border: 1px solid var(--border-hover);
+  border-radius: 8px; z-index: 300; overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0,0,0,.45);
+}
+.catalog-dropdown.open { display: block; }
+.catalog-option {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px; cursor: pointer; font-size: .83rem;
+  transition: background .12s;
+}
+.catalog-option:hover { background: rgba(34,197,94,.08); }
+.catalog-option-name { color: var(--text); }
+.catalog-option-price { color: var(--accent); font-weight: 600; font-size: .78rem; flex-shrink: 0; margin-left: 8px; }
 
 /* ── Photo Thumbnails ────────────────────────────────────────────── */
 .photo-thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
