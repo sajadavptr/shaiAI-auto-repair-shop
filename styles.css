@@ -739,6 +739,21 @@ body::before {
   .scanner-layout { grid-template-columns: 1fr; }
   .kanban-board { grid-template-columns: 1fr; }
 }
+/* ── Section Search Bar (RO, Invoices) ──────────────────────────── */
+.section-search-bar {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--glass); border: 1px solid var(--border); border-radius: 10px;
+  padding: 0 14px; margin-bottom: 14px; transition: border-color .18s;
+}
+.section-search-bar:focus-within { border-color: rgba(34,197,94,.4); }
+.section-search-bar input {
+  background: none; border: none; outline: none;
+  color: var(--text); font-family: inherit; font-size: .875rem;
+  width: 100%; padding: 11px 0;
+}
+.section-search-bar input::placeholder { color: var(--text-dim); }
+.section-search-bar svg { color: var(--text-dim); flex-shrink: 0; }
+
 /* ── Inline Quick-Add Panels (RO modal) ─────────────────────────── */
 .inline-add-btn {
   display: inline-flex; align-items: center; gap: 4px;

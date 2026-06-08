@@ -21,8 +21,42 @@ const COLORS = ['#22C55E','#3B82F6','#A855F7','#F59E0B','#EF4444','#06B6D4','#EC
 const avatarColor = str => COLORS[(str || 'A').charCodeAt(0) % COLORS.length];
 
 /* ── Settings ── */
+const DEFAULT_SERVICES = [
+  'Oil Change', 'Tire Rotation', 'Brake Inspection', 'Brake Replacement', 'Transmission Service',
+  'Engine Diagnostics', 'AC Service', 'Battery Replacement', 'Wheel Alignment', 'Suspension Check',
+  'Coolant Flush', 'Spark Plug Replacement', 'Air Filter Replacement', 'Fuel System Service',
+  'Pre-Purchase Inspection', 'State Inspection', 'Emissions Test', 'Tire Replacement', 'Other'
+];
+function getServices() {
+  const custom = DB.get('services');
+  return [...DEFAULT_SERVICES, ...custom.filter(s => !DEFAULT_SERVICES.includes(s))];
+}
+function populateServiceSelect(selectId, selectedVal = '') {
+  const el = document.getElementById(selectId);
+  if (!el) return;
+  el.innerHTML = '<option value="">Select service…</option>' +
+    getServices().map(s => `<option value="${s}" ${s === selectedVal ? 'selected' : ''}>${s}</option>`).join('');
+}
+function showAddServiceInput() {
+  const panel = document.getElementById('panel-new-service');
+  panel.classList.toggle('open');
+}
+function saveCustomService() {
+  const name = (document.getElementById('new-service-name').value || '').trim();
+  if (!name) { toast('Enter a service name', 'error'); return; }
+  const all = DB.get('services');
+  if (!all.includes(name) && !DEFAULT_SERVICES.includes(name)) {
+    all.push(name);
+    DB.set('services', all);
+  }
+  document.getElementById('new-service-name').value = '';
+  document.getElementById('panel-new-service').classList.remove('open');
+  populateServiceSelect('apptf-reason', name);
+  toast(`"${name}" added to services`);
+}
+
 function getSettings() {
-  return Object.assign({ name: 'ShaiAI Garage', phone: '', email: '', address: '', tax: 10, labor: 85 }, DB.settings());
+  return Object.assign({ name: 'ShaiAI Garage', phone: '', email: '', address: '', tax: 10, labor: 85, reviewUrl: '' }, DB.settings());
 }
 function applySettings() {
   const s = getSettings();
@@ -40,6 +74,7 @@ function openSettings() {
   document.getElementById('set-address').value = s.address;
   document.getElementById('set-tax').value = s.tax;
   document.getElementById('set-labor').value = s.labor;
+  document.getElementById('set-review-url').value = s.reviewUrl || '';
   openModal('settings-modal');
 }
 function saveSettings() {
@@ -50,6 +85,7 @@ function saveSettings() {
     address: document.getElementById('set-address').value.trim(),
     tax: parseFloat(document.getElementById('set-tax').value) || 10,
     labor: parseFloat(document.getElementById('set-labor').value) || 85,
+    reviewUrl: document.getElementById('set-review-url').value.trim(),
   });
   closeModal('settings-modal');
   applySettings();
@@ -171,9 +207,9 @@ searchInput.addEventListener('input', () => {
   if (q.length < 2) { closeSearchDropdown(); return; }
   const results = [];
   DB.customers().forEach(c => {
-    const name = c.first + ' ' + c.last;
-    if (name.toLowerCase().includes(q.toLowerCase()) || c.phone.includes(q)) {
-      results.push({ type: 'customer', label: name, sub: c.phone, id: c.id, color: avatarColor(c.first), initials: c.first[0] + c.last[0] });
+    const name = (c.first + ' ' + c.last).trim();
+    if (name.toLowerCase().includes(q.toLowerCase()) || (c.phone || '').includes(q) || (c.email || '').toLowerCase().includes(q.toLowerCase())) {
+      results.push({ type: 'customer', label: name || 'Unknown', sub: c.phone || c.email || '—', id: c.id, color: avatarColor(c.first), initials: ((c.first||'?')[0] + (c.last||'')[0]).toUpperCase() });
     }
   });
   DB.vehicles().forEach(v => {
@@ -200,7 +236,7 @@ searchInput.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeSearchDropdown();
 });
 
-searchInput.addEventListener('blur', () => setTimeout(closeSearchDropdown, 150));
+searchInput.addEventListener('blur', () => setTimeout(closeSearchDropdown, 220));
 
 function updateSearchFocus(items) {
   items.forEach((el, i) => el.classList.toggle('focused', i === searchFocusIdx));
@@ -618,11 +654,40 @@ function quickAddVehicle() {
 
 /* ── REPAIR ORDERS ── */
 let roFilter = 'all';
+let roSearch = '';
 let lineItems = [];
+
+function roDateStart(filter) {
+  const now = new Date();
+  if (filter === 'today') { const d = new Date(now.getFullYear(), now.getMonth(), now.getDate()); return d.getTime(); }
+  if (filter === 'yesterday') { const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1); return d.getTime(); }
+  if (filter === 'week') { const d = new Date(now); d.setDate(now.getDate() - now.getDay()); d.setHours(0,0,0,0); return d.getTime(); }
+  return 0;
+}
+function roDateEnd(filter) {
+  if (filter === 'yesterday') { const now = new Date(); const d = new Date(now.getFullYear(), now.getMonth(), now.getDate()); return d.getTime(); }
+  return Infinity;
+}
 
 function renderOrders() {
   let all = DB.orders();
-  if (roFilter !== 'all') all = all.filter(o => o.status === roFilter);
+  const isDateFilter = ['today','yesterday','week'].includes(roFilter);
+  if (!isDateFilter && roFilter !== 'all') {
+    all = all.filter(o => o.status === roFilter);
+  } else if (isDateFilter) {
+    const since = roDateStart(roFilter), until = roDateEnd(roFilter);
+    all = all.filter(o => { const t = o.updated || o.created; return t >= since && t < until; });
+  }
+  if (roSearch) {
+    const q = roSearch.toLowerCase();
+    all = all.filter(o => {
+      const c = DB.customers().find(x => x.id === o.customerId);
+      const v = DB.vehicles().find(x => x.id === o.vehicleId);
+      return (o.desc || '').toLowerCase().includes(q) ||
+        (c ? (c.first + ' ' + c.last).toLowerCase().includes(q) : false) ||
+        (v ? (v.plate + ' ' + v.make + ' ' + v.model).toLowerCase().includes(q) : false);
+    });
+  }
   all = [...all].sort((a, b) => {
     const pri = { urgent: 0, high: 1, normal: 2 };
     if (a.status !== 'completed' && b.status !== 'completed') {
@@ -653,12 +718,14 @@ function renderOrders() {
   }).join('');
 }
 
-document.querySelectorAll('.filter-tab').forEach(tab => {
+// RO status/date filter tabs — scoped to the repair-orders view only
+document.querySelectorAll('#view-repair-orders .filter-tab').forEach(tab => {
   tab.addEventListener('click', () => {
-    document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('#view-repair-orders .filter-tab').forEach(t => t.classList.remove('active'));
     tab.classList.add('active'); roFilter = tab.dataset.filter; renderOrders();
   });
 });
+document.getElementById('ro-search').addEventListener('input', e => { roSearch = e.target.value.trim(); renderOrders(); });
 
 async function deleteOrder(id) {
   const o = DB.orders().find(x => x.id === id);
@@ -767,6 +834,8 @@ document.getElementById('ro-form').addEventListener('submit', e => {
   closeModal('ro-modal');
   renderOrders(); renderDashboard(); if (currentView === 'kanban') renderKanban();
   toast(idx >= 0 ? 'Order updated' : 'Repair order created');
+  const wasCompleted = idx >= 0 ? orders[idx]?.status === 'completed' : false;
+  if (order.status === 'completed' && !wasCompleted) triggerReviewPrompt(order.customerId);
 });
 
 /* ── KANBAN ── */
@@ -862,8 +931,34 @@ function kanbanDrop(e, newStatus) {
     DB.save('orders', orders);
     renderKanban();
     toast(`Moved to ${newStatus.replace('-', ' ')}`);
+    if (newStatus === 'completed') triggerReviewPrompt(orders[idx].customerId);
   }
   draggingId = null;
+}
+
+/* ── Google Review ── */
+let _reviewCustId = null;
+function triggerReviewPrompt(customerId) {
+  const s = getSettings();
+  const url = s.reviewUrl || '';
+  const c = DB.customers().find(x => x.id === customerId);
+  _reviewCustId = customerId;
+  document.getElementById('review-customer-name').textContent = c ? c.first + ' ' + c.last : 'the customer';
+  const box = document.getElementById('review-link-box');
+  if (url) { box.textContent = url; box.style.display = ''; }
+  else { box.style.display = 'none'; }
+  openModal('review-modal');
+}
+function copyReviewLink() {
+  const url = getSettings().reviewUrl || '';
+  if (!url) { toast('No review link configured — add it in Settings', 'error'); return; }
+  navigator.clipboard.writeText(url).then(() => toast('Review link copied to clipboard'));
+}
+function openReviewLink() {
+  const url = getSettings().reviewUrl || '';
+  if (!url) { toast('No review link configured — add it in Settings', 'error'); return; }
+  window.open(url, '_blank');
+  closeModal('review-modal');
 }
 document.addEventListener('dragover', e => {
   document.querySelectorAll('.kanban-col').forEach(c => { if (!c.contains(e.target)) c.classList.remove('drag-over'); });
@@ -970,11 +1065,39 @@ document.getElementById('dvi-form').addEventListener('submit', e => {
 });
 
 /* ── INVOICES ── */
+let invoiceFilter = 'all';
+let invoiceSearch = '';
+
+function invoiceDateStart(f) {
+  const now = new Date();
+  if (f === 'today') return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  if (f === 'week') { const d = new Date(now); d.setDate(now.getDate() - now.getDay()); d.setHours(0,0,0,0); return d.getTime(); }
+  if (f === 'month') return new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  return 0;
+}
+
 function renderInvoices() {
-  const orders = [...DB.orders()].sort((a, b) => b.created - a.created);
+  let orders = [...DB.orders()].sort((a, b) => b.created - a.created);
+  if (invoiceFilter === 'completed') {
+    orders = orders.filter(o => o.status === 'completed');
+  } else {
+    const since = invoiceDateStart(invoiceFilter);
+    if (since) orders = orders.filter(o => (o.updated || o.created) >= since);
+  }
+  if (invoiceSearch) {
+    const q = invoiceSearch.toLowerCase();
+    orders = orders.filter(o => {
+      const c = DB.customers().find(x => x.id === o.customerId);
+      const v = DB.vehicles().find(x => x.id === o.vehicleId);
+      return (o.desc || '').toLowerCase().includes(q) ||
+        (c ? (c.first + ' ' + c.last).toLowerCase().includes(q) : false) ||
+        (v ? (v.plate + ' ' + v.make + ' ' + v.model).toLowerCase().includes(q) : false) ||
+        String(o.total || '').includes(q);
+    });
+  }
   const list = document.getElementById('invoices-list');
   if (!orders.length) {
-    list.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg><p>No invoices yet — create a repair order first.</p></div>`;
+    list.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg><p>No invoices match your filter.</p></div>`;
     return;
   }
   const totalRevenue = orders.filter(o => o.status === 'completed').reduce((s, o) => s + (o.total || 0), 0);
@@ -1009,6 +1132,14 @@ function renderInvoices() {
     </div>`;
   }).join('');
 }
+
+document.querySelectorAll('#invoice-tabs .filter-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('#invoice-tabs .filter-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active'); invoiceFilter = tab.dataset.ifilter; renderInvoices();
+  });
+});
+document.getElementById('invoice-search').addEventListener('input', e => { invoiceSearch = e.target.value.trim(); renderInvoices(); });
 
 function printInvoice(id, num) {
   const o = DB.orders().find(x => x.id === id);
@@ -1107,18 +1238,59 @@ function renderAppointments() {
 
 function openApptModal(preCustomerId = null) {
   populateCustomerSelects();
+  populateServiceSelect('apptf-reason');
   document.getElementById('apptf-id').value = '';
   document.getElementById('apptf-date').value = new Date().toISOString().slice(0, 10);
   document.getElementById('apptf-time').value = '09:00';
-  document.getElementById('apptf-reason').value = '';
   document.getElementById('apptf-notes').value = '';
+  // reset inline panels
+  ['panel-appt-customer','panel-appt-vehicle','panel-new-service'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove('open');
+  });
+  const toggleApptC = document.getElementById('toggle-appt-customer');
+  if (toggleApptC) toggleApptC.textContent = '+ New Customer';
+  const toggleApptV = document.getElementById('toggle-appt-vehicle');
+  if (toggleApptV) toggleApptV.textContent = '+ New Vehicle';
   if (preCustomerId) {
     document.getElementById('apptf-customer').value = preCustomerId;
     updateVehicleSelect('apptf-vehicle', preCustomerId);
   } else {
-    document.getElementById('apptf-vehicle').innerHTML = '<option value="">Select…</option>';
+    document.getElementById('apptf-vehicle').innerHTML = '<option value="">Select vehicle…</option>';
   }
   openModal('appt-modal');
+}
+
+function quickAddCustomerAppt() {
+  const first = (document.getElementById('qca-first').value || '').trim();
+  const last = (document.getElementById('qca-last').value || '').trim();
+  const phone = (document.getElementById('qca-phone').value || '').trim();
+  if (!first && !last) { toast('Enter at least a first or last name', 'error'); return; }
+  const c = { id: uid(), first: first || 'Unknown', last: last || '', phone, email: '', notes: '', created: Date.now() };
+  const customers = DB.customers(); customers.push(c); DB.save('customers', customers);
+  populateCustomerSelects();
+  document.getElementById('apptf-customer').value = c.id;
+  updateVehicleSelect('apptf-vehicle', c.id);
+  ['qca-first','qca-last','qca-phone'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('panel-appt-customer').classList.remove('open');
+  document.getElementById('toggle-appt-customer').textContent = '+ New Customer';
+  toast(`Customer ${c.first} ${c.last} added`);
+}
+
+function quickAddVehicleAppt() {
+  const plate = (document.getElementById('qva-plate').value || '').trim().toUpperCase();
+  const year = (document.getElementById('qva-year').value || '').trim();
+  const make = (document.getElementById('qva-make').value || '').trim();
+  const model = (document.getElementById('qva-model').value || '').trim();
+  if (!plate && !make) { toast('Enter at least a plate or make', 'error'); return; }
+  const customerId = document.getElementById('apptf-customer').value || null;
+  const v = { id: uid(), customerId, plate, year, make, model, color: '', vin: '', mileage: 0, nextService: 0, serviceNotes: '', created: Date.now() };
+  const vehicles = DB.vehicles(); vehicles.push(v); DB.save('vehicles', vehicles);
+  updateVehicleSelect('apptf-vehicle', customerId, v.id);
+  ['qva-plate','qva-year','qva-make','qva-model'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('panel-appt-vehicle').classList.remove('open');
+  document.getElementById('toggle-appt-vehicle').textContent = '+ New Vehicle';
+  toast(`Vehicle added & selected`);
 }
 
 document.getElementById('apptf-customer').addEventListener('change', e => updateVehicleSelect('apptf-vehicle', e.target.value));
