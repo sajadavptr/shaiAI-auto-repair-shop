@@ -177,6 +177,7 @@ function refreshView(view) {
   if (view === 'inspections') renderInspections();
   if (view === 'invoices') renderInvoices();
   if (view === 'appointments') renderAppointments();
+  if (view === 'taxes') renderTaxes();
 }
 
 function closeSidebar() {
@@ -1636,6 +1637,131 @@ function searchPlate(plate) {
     </div>`;
   }).join('');
 }
+
+/* ── TAX REPORT ── */
+let taxPeriodMonths = 12;
+
+function renderTaxes() {
+  const s = getSettings();
+  const orders = DB.orders();
+  const rate = s.tax || 10;
+  const now = new Date();
+  const yearStart = new Date(now.getFullYear(), 0, 1).getTime();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+
+  const taxOf = o => (o.tax != null ? o.tax : (o.subtotal || 0) * rate / 100);
+  const ytdOrders = orders.filter(o => o.status === 'completed' && o.created >= yearStart);
+  const monthOrders = orders.filter(o => o.status === 'completed' && o.created >= monthStart);
+  const openOrders = orders.filter(o => o.status !== 'completed');
+  const ytdTax = ytdOrders.reduce((s, o) => s + taxOf(o), 0);
+  const monthTax = monthOrders.reduce((s, o) => s + taxOf(o), 0);
+  const outstandingTax = openOrders.reduce((s, o) => s + taxOf(o), 0);
+
+  document.getElementById('tax-ytd').textContent = fmt(ytdTax);
+  document.getElementById('tax-ytd-orders').textContent = `from ${ytdOrders.length} order${ytdOrders.length !== 1 ? 's' : ''}`;
+  document.getElementById('tax-month').textContent = fmt(monthTax);
+  document.getElementById('tax-month-orders').textContent = `from ${monthOrders.length} order${monthOrders.length !== 1 ? 's' : ''}`;
+  document.getElementById('tax-outstanding').textContent = fmt(outstandingTax);
+  document.getElementById('tax-outstanding-orders').textContent = `from ${openOrders.length} open order${openOrders.length !== 1 ? 's' : ''}`;
+  document.getElementById('tax-rate-display').textContent = rate + '%';
+  document.getElementById('tax-config-rate').textContent = rate + '%';
+  document.getElementById('tax-config-labor').textContent = '$' + (s.labor || 85) + '/hr';
+
+  renderTaxMonthlyTable(rate);
+
+  const recentEl = document.getElementById('tax-recent-list');
+  const recent = [...orders.filter(o => o.status === 'completed')].sort((a, b) => b.created - a.created).slice(0, 10);
+  if (!recent.length) {
+    recentEl.innerHTML = `<div style="color:var(--text-dim);font-size:.8rem;padding:8px 0">No completed orders yet.</div>`;
+  } else {
+    recentEl.innerHTML = recent.map(o => {
+      const c = DB.customers().find(x => x.id === o.customerId);
+      const v = DB.vehicles().find(x => x.id === o.vehicleId);
+      const t = taxOf(o);
+      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);gap:8px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:.82rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c ? c.first + ' ' + c.last : 'Walk-in'}</div>
+          <div style="font-size:.7rem;color:var(--text-dim)">${v ? v.plate || (v.make + ' ' + v.model) : '—'} · ${fmtDateShort(o.created)}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-size:.82rem;font-weight:700;color:var(--accent)">${fmt(t)}</div>
+          <div style="font-size:.68rem;color:var(--text-dim)">${rate}% of ${fmt(o.subtotal || 0)}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+}
+
+function renderTaxMonthlyTable(rate) {
+  const orders = DB.orders().filter(o => o.status === 'completed');
+  const tbody = document.getElementById('tax-monthly-tbody');
+  if (!tbody) return;
+  const now = new Date();
+  const rows = [];
+  let totalRev = 0, totalTax = 0, totalCount = 0;
+  for (let i = taxPeriodMonths - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const start = d.getTime();
+    const end = new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime();
+    const mo = orders.filter(o => o.created >= start && o.created < end);
+    const rev = mo.reduce((s, o) => s + (o.subtotal || 0), 0);
+    const tax = mo.reduce((s, o) => s + (o.tax != null ? o.tax : (o.subtotal || 0) * rate / 100), 0);
+    totalRev += rev; totalTax += tax; totalCount += mo.length;
+    const label = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+    const isCurrent = d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    rows.push(`<tr${isCurrent ? ' style="font-weight:700"' : ''}>
+      <td>${label}${isCurrent ? ' <span style="font-size:.65rem;color:var(--accent);font-weight:700;margin-left:4px">NOW</span>' : ''}</td>
+      <td>${mo.length}</td><td>${fmt(rev)}</td>
+      <td class="tax-amount">${fmt(tax)}</td>
+      <td style="color:var(--text-muted)">${rev > 0 ? (tax / rev * 100).toFixed(1) : '0.0'}%</td>
+    </tr>`);
+  }
+  rows.push(`<tr class="tax-total-row"><td>Total</td><td>${totalCount}</td><td>${fmt(totalRev)}</td><td class="tax-amount">${fmt(totalTax)}</td><td>${totalRev > 0 ? (totalTax / totalRev * 100).toFixed(1) : '0.0'}%</td></tr>`);
+  tbody.innerHTML = rows.join('');
+}
+
+function exportTaxReport() {
+  const s = getSettings();
+  const rate = s.tax || 10;
+  const orders = DB.orders().filter(o => o.status === 'completed').sort((a, b) => b.created - a.created);
+  const rows = [['Date','Customer','Vehicle','Subtotal','Tax','Total','Rate']];
+  orders.forEach(o => {
+    const c = DB.customers().find(x => x.id === o.customerId);
+    const v = DB.vehicles().find(x => x.id === o.vehicleId);
+    const tax = o.tax != null ? o.tax : (o.subtotal || 0) * rate / 100;
+    rows.push([new Date(o.created).toLocaleDateString(), c ? c.first + ' ' + c.last : 'Walk-in', v ? (v.plate || v.make + ' ' + v.model) : '—', (o.subtotal || 0).toFixed(2), tax.toFixed(2), (o.total || 0).toFixed(2), rate + '%']);
+  });
+  const csv = rows.map(r => r.map(x => '"' + String(x).replace(/"/g, '""') + '"').join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url;
+  a.download = 'tax-report-' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.click(); URL.revokeObjectURL(url);
+  toast('Tax report exported as CSV');
+}
+
+function printTaxReport() { window.print(); }
+
+document.querySelectorAll('[data-taxperiod]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-taxperiod]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    taxPeriodMonths = parseInt(btn.dataset.taxperiod);
+    renderTaxMonthlyTable(getSettings().tax || 10);
+  });
+});
+
+/* ── LIVE CLOCK ── */
+function updateClock() {
+  const timeEl = document.getElementById('topbar-clock-time');
+  const dateEl = document.getElementById('topbar-clock-date');
+  if (!timeEl) return;
+  const now = new Date();
+  timeEl.textContent = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+  dateEl.textContent = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}
+updateClock();
+setInterval(updateClock, 1000);
 
 function prefillNewVehicle(plate) {
   navigate('vehicles');
